@@ -1,0 +1,20 @@
+{
+  "name": "devion-backend",
+  "version": "1.0.0",
+  "description": "Devion API Server",
+  "main": "src/server.ts",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.ts",
+    "dev": "tsx watch src/server.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2"
+  },
+  "devDependencies": {
+    "tsx": "^4.21.0"
+  }
+}
