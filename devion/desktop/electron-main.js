@@ -1,9 +1,12 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const { exec } = require('child_process');
 
 const isDev = !app.isPackaged;
+
+// Hide the menu bar
+Menu.setApplicationMenu(null);
 
 // Track running app processes and windows
 const runningApps = new Map(); // appName -> { process, window, port }
@@ -55,6 +58,19 @@ function waitForUrl(url, timeout = 30000) {
 // IPC handler to check if an app is already running
 ipcMain.handle('is-app-running', (event, appName) => {
   return runningApps.has(appName);
+});
+
+// IPC handler to focus an already running app
+ipcMain.handle('focus-app', (event, appName) => {
+  const appData = runningApps.get(appName);
+  if (appData && appData.window && !appData.window.isDestroyed()) {
+    if (appData.window.isMinimized()) {
+      appData.window.restore();
+    }
+    appData.window.focus();
+    return { success: true };
+  }
+  return { success: false, error: 'App not found or window destroyed' };
 });
 
 // IPC handler to get list of running apps

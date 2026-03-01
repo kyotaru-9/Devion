@@ -1,11 +1,34 @@
 import { useState, useEffect, useRef } from 'react';
 import { Toaster } from 'react-hot-toast';
 import toast from 'react-hot-toast';
-import { BookOpen, Gamepad2, Hammer, Play, Loader2, LogOut, Settings, User, Github, Twitter, Linkedin, Globe } from 'lucide-react';
+import { BookOpen, Gamepad2, Hammer, Play, Loader2, Github, Twitter, Linkedin, Globe, Circle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { Auth } from './components/Auth';
 import { VerifyPage } from './components/VerifyPage';
+import CodexButton from './components/CodexButton';
 import './App.css';
+
+const SettingsIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="3" />
+    <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+  </svg>
+);
+
+const LogOutIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="9" />
+    <path d="M15 9l-6 6" />
+    <path d="M9 9l6 6" />
+  </svg>
+);
+
+const UserIcon = () => (
+  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+    <circle cx="12" cy="7" r="4" />
+  </svg>
+);
 
 const modes = [
   {
@@ -17,7 +40,7 @@ const modes = [
   {
     id: 'rift',
     name: 'Rift',
-    description: 'Challenge yourself with timed coding challenges and build projects',
+    description: 'Level up with gamified visual challenges, achievements, and interactive coding quests',
     icon: Gamepad2,
     comingSoon: true,
   },
@@ -33,10 +56,14 @@ const modes = [
 function App() {
   const [selectedMode, setSelectedMode] = useState<string | null>('codex');
   const [isLoading, setIsLoading] = useState(false);
+  const [isAppRunning, setIsAppRunning] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [isVerifying, setIsVerifying] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [isSidebarClosing, setIsSidebarClosing] = useState(false);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [isModeSwitchCooldown, setIsModeSwitchCooldown] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [openApps, setOpenApps] = useState<Set<string>>(() => {
     // Load from localStorage on initialization
@@ -101,6 +128,29 @@ function App() {
   useEffect(() => {
     localStorage.setItem('devion-open-apps', JSON.stringify([...openApps]));
   }, [openApps]);
+
+  // Check if selected app is running
+  useEffect(() => {
+    if (!selectedMode || !window.electronAPI?.isAppRunning) {
+      setIsAppRunning(false);
+      return;
+    }
+
+    const checkRunning = async () => {
+      if (!window.electronAPI) return;
+      try {
+        const running = await window.electronAPI.isAppRunning(selectedMode);
+        setIsAppRunning(running);
+      } catch (err) {
+        console.warn('Could not check if app is running:', err);
+        setIsAppRunning(false);
+      }
+    };
+
+    checkRunning();
+    const interval = setInterval(checkRunning, 2000);
+    return () => clearInterval(interval);
+  }, [selectedMode]);
 
   // Cleanup mechanism for closed windows using heartbeat system
   useEffect(() => {
@@ -176,6 +226,27 @@ function App() {
     setIsAuthenticated(false);
   };
 
+  const closeSidebar = () => {
+    setIsSidebarClosing(true);
+    setTimeout(() => {
+      setIsSidebarClosing(false);
+      setShowProfileMenu(false);
+    }, 250);
+  };
+
+  const handleModeChange = (modeId: string) => {
+    if (modeId === selectedMode || isModeSwitchCooldown) return;
+    setIsModeSwitchCooldown(true);
+    setIsTransitioning(true);
+    setTimeout(() => {
+      setSelectedMode(modeId);
+      setTimeout(() => {
+        setIsTransitioning(false);
+        setIsModeSwitchCooldown(false);
+      }, 400);
+    }, 400);
+  };
+
   const handlePlay = async () => {
     console.log('🚀 handlePlay called');
     console.log('electronAPI exists:', !!window.electronAPI);
@@ -191,11 +262,12 @@ function App() {
           console.log('📊 isAppRunning result:', isRunning);
           
           if (isRunning) {
-            console.log(`❌ ${selectedMode} is already running - BLOCKING LAUNCH`);
-            toast.error(`${selectedMode.charAt(0).toUpperCase() + selectedMode.slice(1)} is already running!`, {
-              duration: 3000,
-              position: 'top-right',
-            });
+            console.log(`🔄 ${selectedMode} is already running - FOCUSING WINDOW`);
+            try {
+              await window.electronAPI.focusApp(selectedMode);
+            } catch (err) {
+              console.warn('⚠️ Could not focus app window:', err);
+            }
             return;
           } else {
             console.log(`✅ ${selectedMode} is not running - PROCEEDING WITH LAUNCH`);
@@ -347,54 +419,74 @@ function App() {
   }
 
   return (
-    <div className="app-container">
+    <div className={`app-container ${selectedMode || 'codex'}`}>
       <Toaster position="top-right" />
       <div className="profile-container" ref={profileRef}>
-        <button 
+        <button
           className="profile-button"
           onClick={() => setShowProfileMenu(!showProfileMenu)}
         >
           <div className="profile-circle">
-            <User />
+            <UserIcon />
           </div>
         </button>
         {showProfileMenu && (
-          <div className="profile-sidebar">
-            <div className="profile-header">
-              <div className="profile-avatar">
-                <User />
+          <>
+            <div className={`sidebar-backdrop ${isSidebarClosing ? 'closing' : ''}`} onClick={closeSidebar} />
+            <div className={`profile-sidebar ${isSidebarClosing ? 'closing' : ''}`}>
+            <div className="sidebar-content">
+              <div className="sidebar-user">
+                <div className="sidebar-avatar">
+                  <UserIcon />
+                </div>
+                <div className="sidebar-user-info">
+                  <h3 className="sidebar-user-name">{user?.user_metadata?.full_name || user?.email || 'User'}</h3>
+                  <span className="sidebar-user-status">
+                    <span className="status-dot"></span>
+                    Online
+                  </span>
+                </div>
               </div>
-              <div className="profile-info">
-                <span className="profile-name">
-                  {user?.user_metadata?.full_name || user?.email || 'User'}
-                </span>
-                <span className="profile-status">Online</span>
+              <div className="sidebar-stats">
+                <div className="stat-item">
+                  <span className="stat-value">0</span>
+                  <span className="stat-label">Courses</span>
+                </div>
+                <div className="stat-divider"></div>
+                <div className="stat-item">
+                  <span className="stat-value">0</span>
+                  <span className="stat-label">Challenges</span>
+                </div>
+                <div className="stat-divider"></div>
+                <div className="stat-item">
+                  <span className="stat-value">0</span>
+                  <span className="stat-label">Streak</span>
+                </div>
               </div>
-            </div>
-            <div className="profile-actions">
-              <button className="profile-menu-item">
-                <Settings />
-                <span>Settings</span>
-              </button>
-              <button className="profile-menu-item" onClick={handleLogout}>
-                <LogOut />
-                <span>Sign Out</span>
-              </button>
-              <div className="profile-divider"></div>
-              <button className="profile-menu-item" onClick={() => {
-                setOpenApps(new Set());
-                setWindowRefs(new Map());
-                localStorage.removeItem('devion-open-apps');
-                toast.success('App tracking reset!');
-              }}>
-                🔄
-                <span>Reset App Tracking</span>
-              </button>
-              <div className="profile-footer">
+              <nav className="sidebar-nav">
+                <button className="sidebar-nav-item">
+                  <SettingsIcon />
+                  <span>Settings</span>
+                  <svg className="nav-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="9 18 15 12 9 6"></polyline>
+                  </svg>
+                </button>
+                <button className="sidebar-nav-item" onClick={handleLogout}>
+                  <LogOutIcon />
+                  <span>Sign Out</span>
+                  <svg className="nav-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <polyline points="9 18 15 12 9 6"></polyline>
+                  </svg>
+                </button>
+              </nav>
+              <div className="sidebar-footer">
+                <p className="footer-version">Devion v1.0.0</p>
+                <p className="footer-hint">Click outside to hide</p>
               </div>
             </div>
           </div>
-        )}
+        </>
+      )}
       </div>
       <div className="title-section">
         <h1 className="app-title">
@@ -405,46 +497,93 @@ function App() {
         </p>
       </div>
 
-      <div className="mode-switcher">
-        {modes.map((mode) => {
-          const Icon = mode.icon;
-          const isSelected = selectedMode === mode.id;
-          return (
-            <button
-              key={mode.id}
-              onClick={() => setSelectedMode(mode.id)}
-              disabled={isLoading || mode.comingSoon}
-              className={`mode-switch-item ${isSelected ? 'active' : ''} ${mode.comingSoon ? 'coming-soon' : ''}`}
-            >
-              <Icon className="mode-switch-icon" />
-              <span className="mode-switch-name">{mode.name}</span>
-              {isSelected && <div className="mode-switch-indicator" />}
-            </button>
-          );
-        })}
+      <div className="mode-selector">
+        <button 
+          className={`mode-nav-btn ${isModeSwitchCooldown ? 'cooldown' : ''}`}
+          onClick={() => {
+            const currentIndex = modes.findIndex(m => m.id === selectedMode);
+            const prevIndex = currentIndex <= 0 ? modes.length - 1 : currentIndex - 1;
+            handleModeChange(modes[prevIndex].id);
+          }}
+        >
+          <ChevronLeft />
+        </button>
+        <div className="mode-display">
+          {(() => {
+            const mode = modes.find(m => m.id === selectedMode);
+            if (!mode) return null;
+            const Icon = mode.icon;
+            return (
+              <div 
+                className={`mode-card ${mode.comingSoon ? 'coming-soon' : ''}`}
+                onClick={() => !mode.comingSoon && handleModeChange(mode.id)}
+              >
+                <Icon className="mode-card-icon" />
+                <span className="mode-card-name">{mode.name}</span>
+                <span className="mode-card-desc">{mode.description}</span>
+              </div>
+            );
+          })()}
+        </div>
+        <button 
+          className={`mode-nav-btn ${isModeSwitchCooldown ? 'cooldown' : ''}`}
+          onClick={() => {
+            const currentIndex = modes.findIndex(m => m.id === selectedMode);
+            const nextIndex = currentIndex >= modes.length - 1 ? 0 : currentIndex + 1;
+            handleModeChange(modes[nextIndex].id);
+          }}
+        >
+          <ChevronRight />
+        </button>
       </div>
 
-      <button
-        onClick={handlePlay}
-        disabled={!selectedMode || isLoading || selectedMode === 'rift' || selectedMode === 'forge'}
-        className={`play-button ${isLoading ? 'loading' : selectedMode && selectedMode !== 'rift' && selectedMode !== 'forge' ? 'enabled' : selectedMode === 'rift' || selectedMode === 'forge' ? 'coming-soon' : ''}`}
-      >
-        {isLoading ? (
-          <>
-            <Loader2 className="loading-spinner" />
-            Loading...
-          </>
-        ) : selectedMode === 'rift' || selectedMode === 'forge' ? (
-          <>
-            Coming Soon
-          </>
-        ) : (
-          <>
-            <Play />
-            Play
-          </>
-        )}
-      </button>
+      {isTransitioning && <div className="mode-transition-overlay" />}
+
+      {selectedMode === 'codex' ? (
+        <CodexButton
+          onClick={handlePlay}
+          disabled={!selectedMode || isLoading}
+          className="play-button"
+        >
+          {isLoading ? (
+            <>
+              <Loader2 className="loading-spinner" />
+              Loading...
+            </>
+          ) : isAppRunning ? (
+            'Running'
+          ) : (
+            'Start'
+          )}
+        </CodexButton>
+      ) : (
+        <button
+          onClick={handlePlay}
+          disabled={!selectedMode || isLoading || selectedMode === 'rift' || selectedMode === 'forge'}
+          className={`play-button ${isLoading ? 'loading' : isAppRunning ? 'running' : selectedMode && selectedMode !== 'rift' && selectedMode !== 'forge' ? 'enabled' : selectedMode === 'rift' || selectedMode === 'forge' ? 'coming-soon' : ''}`}
+        >
+          {isLoading ? (
+            <>
+              <Loader2 className="loading-spinner" />
+              Loading...
+            </>
+          ) : isAppRunning ? (
+            <>
+              <Circle className="running-dot" />
+              Running
+            </>
+          ) : selectedMode === 'rift' || selectedMode === 'forge' ? (
+            <>
+              Coming Soon
+            </>
+          ) : (
+            <>
+              <Play />
+              Start
+            </>
+          )}
+        </button>
+      )}
 
       <footer className="app-footer">
         <div className="footer-content">
